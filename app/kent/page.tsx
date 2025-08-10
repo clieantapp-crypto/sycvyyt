@@ -1,6 +1,6 @@
 "use client"
 import { useEffect, useState } from "react"
-import "./knet.css"
+import "./kent.css"
 import { doc, onSnapshot } from "firebase/firestore"
 import { useRouter } from "next/navigation"
 import { db, handlePay } from "@/lib/firebase"
