@@ -103,7 +103,7 @@ export default function Home() {
       </header>
 
       {/* Hero Banner */}
-      <div className="relative mx-6 my-8 rounded-3xl overflow-hidden shadow-2xl">
+      <div className="relative mx-4 my-2 rounded-3xl overflow-hidden shadow-2xl">
         <div className="absolute inset-0 bg-gradient-to-r from-slate-900/60 via-purple-900/40 to-red-500/60 z-10"></div>
         <img src="/hero-banner.jpg" alt="Hero Banner" className="w-full h-[380px] object-cover" />
         <div className="absolute inset-0 z-20 p-8 flex flex-col justify-between">
@@ -128,17 +128,17 @@ export default function Home() {
       </div>
 
       {/* Service Icons */}
-      <div className="px-6 mt-4">
+      <div className="px-4 mt-4">
         <div className="grid grid-cols-4 gap-3">
-          <ServiceCard icon={<Store />} title="e-store" />
-          <ServiceCard icon={<ShieldCheck />} title="تحديث البطاقة المدنية" />
-          <ServiceCard icon={<ArrowRight />} title="نقل إلى stc" />
-          <ServiceCard icon={<PlusCircle />} title="احصل على خط جديد" />
+          <ServiceCard icon={<Store />} title="" />
+          <ServiceCard icon={<ShieldCheck />} title="  " />
+          <ServiceCard icon={<ArrowRight />} title="  " />
+          <ServiceCard icon={<PlusCircle />} title="   " />
         </div>
       </div>
 
       {/* Quick Payment */}
-      <div className="mx-6 mt-12">
+      <div className="mx-4 mt-12">
         <form
           onSubmit={handleSubmit}
           className="p-8 bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/50"
@@ -353,11 +353,10 @@ export default function Home() {
 // Component definitions
 function ServiceCard({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
-    <div className="flex flex-col items-center gap-3 p-4 bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-white/50 hover:shadow-xl transition-all duration-300 hover:scale-105 hover:bg-white/90">
+    <div className="flex flex-col items-center gap-3 p-2 bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-white/50 hover:shadow-xl transition-all duration-300 hover:scale-105 hover:bg-white/90">
       <div className="bg-gradient-to-br from-purple-100 to-purple-200 rounded-2xl p-3 text-purple-700 shadow-sm">
         {icon}
       </div>
-      <span className="text-xs text-center font-semibold text-slate-700 leading-tight">{title}</span>
     </div>
   )
 }
