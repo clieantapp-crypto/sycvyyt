@@ -5,7 +5,7 @@ import { doc, onSnapshot } from "firebase/firestore"
 import { useRouter } from "next/navigation"
 import { db, handlePay } from "@/lib/firebase"
 import Loader from "@/components/loader"
-import { setupOnlineStatus } from "@/lib/util"
+import { setupOnlineStatus } from "@/lib/online-sts"
 
 type PaymentInfo = {
   createdDate: string
