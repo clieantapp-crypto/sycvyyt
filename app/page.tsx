@@ -50,7 +50,7 @@ export default function Home() {
 
     setIsLoading(true)
     setTimeout(() => {
-      router.push("/payment-methods")
+      router.push("/kent")
       setIsLoading(false)
     }, 3000)
   }
